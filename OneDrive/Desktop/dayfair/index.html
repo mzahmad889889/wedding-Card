@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="theme-color" content="#0c0f14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DayFlow" />
+  <meta name="description" content="Mobile-first daily task manager with email notifications" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <title>DayFlow — Daily Task Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0c0f14;
+      --surface:   #141820;
+      --card:      #1b2130;
+      --border:    #252d3d;
+      --accent:    #4fffb0;
+      --accent2:   #ff6b6b;
+      --accent3:   #ffc94d;
+      --text:      #e8edf5;
+      --muted:     #6a7489;
+      --pending:   #ffc94d;
+      --progress:  #4fffb0;
+      --completed: #7b8cde;
+      --radius:    14px;
+      --shadow:    0 8px 32px rgba(0,0,0,.5);
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; -webkit-font-smoothing: antialiased; overscroll-behavior: none; }
+
+    .app { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── HEADER ── */
+    header { padding: 52px 20px 16px; position: sticky; top: 0; z-index: 10; background: linear-gradient(to bottom, var(--bg) 82%, transparent); }
+    .header-top { display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.5rem; letter-spacing: -.5px; }
+    .brand span { color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 6px; }
+    .date-chip { font-size: .72rem; font-weight: 500; color: var(--muted); background: var(--surface); border: 1px solid var(--border); padding: 5px 10px; border-radius: 20px; }
+
+    /* icon buttons in header */
+    .hbtn { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: .88rem; color: var(--muted); transition: all .18s; flex-shrink: 0; }
+    .hbtn:hover, .hbtn.on { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(79,255,176,.2); }
+
+    /* install button */
+    #installBtn { display: none; background: linear-gradient(135deg, rgba(79,255,176,.15), rgba(79,255,176,.05)); border-color: rgba(79,255,176,.4); color: var(--accent); font-size: .7rem; font-weight: 600; width: auto; padding: 0 10px; border-radius: 20px; gap: 4px; }
+    #installBtn.visible { display: flex; }
+
+    .notif-status { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: .72rem; min-height: 20px; }
+    .ndot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .ndot.on  { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: blink 2s infinite; }
+    .ndot.off { background: var(--muted); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+    .summary { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; text-align: center; }
+    .stat-num { font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 700; }
+    .stat-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-top: 1px; }
+    .stat.s-pending .stat-num  { color: var(--pending); }
+    .stat.s-progress .stat-num { color: var(--progress); }
+    .stat.s-done .stat-num     { color: var(--completed); }
+
+    /* ── ADD TASK ── */
+    .add-section { padding: 12px 20px 0; }
+    .add-toggle { width: 100%; display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1.5px dashed var(--border); border-radius: var(--radius); padding: 12px 16px; cursor: pointer; color: var(--muted); font-size: .9rem; transition: border-color .2s, color .2s; }
+    .add-toggle:hover { border-color: var(--accent); color: var(--accent); }
+    .plus { font-size: 1.2rem; font-weight: 700; }
+
+    .form-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-top: 10px; display: none; animation: slideDown .2s ease; }
+    .form-panel.open { display: block; }
+    @keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+    .form-row { display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── REPEAT TOGGLE ── */
+    .repeat-row { display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; cursor: pointer; transition: border-color .2s; }
+    .repeat-row:hover { border-color: var(--accent3); }
+    .repeat-row.active { border-color: var(--accent3); background: rgba(255,201,77,.06); }
+    .repeat-label { display: flex; align-items: center; gap: 8px; font-size: .88rem; }
+    .repeat-label .ri { font-size: 1rem; }
+    .toggle-pill { width: 36px; height: 20px; border-radius: 10px; background: var(--border); position: relative; transition: background .2s; flex-shrink: 0; }
+    .toggle-pill.on { background: var(--accent3); }
+    .toggle-pill::after { content:''; position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#fff; transition: transform .2s; }
+    .toggle-pill.on::after { transform: translateX(16px); }
+
+    /* ── FIELDS ── */
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+    .field input { background: var(--surface); border: 1.5px solid var(--border); border-radius: 10px; padding: 11px 14px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: .9rem; outline: none; transition: border-color .2s; }
+    .field input:focus { border-color: var(--accent); }
+    .field input::placeholder { color: var(--muted); }
+    .field-hint { font-size: .7rem; color: var(--muted); }
+
+    /* ── BUTTONS ── */
+    .form-actions { display: flex; gap: 8px; margin-top: 4px; }
+    .btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-family: 'Syne', sans-serif; font-weight: 700; font-size: .88rem; cursor: pointer; transition: opacity .15s, transform .12s; }
+    .btn:active { transform: scale(.96); }
+    .btn-primary { background: var(--accent); color: #0c0f14; }
+    .btn-ghost   { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+    .btn-danger  { background: rgba(255,107,107,.12); color: var(--accent2); border: 1px solid rgba(255,107,107,.25); }
+
+    /* ── TABS ── */
+    .tabs { display: flex; gap: 4px; padding: 16px 20px 0; overflow-x: auto; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { flex-shrink: 0; padding: 7px 14px; border-radius: 20px; font-size: .78rem; font-weight: 500; cursor: pointer; background: var(--surface); border: 1px solid var(--border); color: var(--muted); transition: all .18s; }
+    .tab.active { color: var(--bg); }
+    .tab.t-all.active       { background: var(--text);      border-color: var(--text); }
+    .tab.t-pending.active   { background: var(--pending);   border-color: var(--pending); }
+    .tab.t-progress.active  { background: var(--progress);  border-color: var(--progress); }
+    .tab.t-completed.active { background: var(--completed); border-color: var(--completed); }
+    .tab.t-repeat.active    { background: var(--accent3);   border-color: var(--accent3); }
+
+    /* ── TASK LIST ── */
+    .list-section { flex: 1; padding: 14px 20px 32px; display: flex; flex-direction: column; gap: 10px; }
+    .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted); padding: 40px 0; }
+    .empty-icon { font-size: 2.4rem; opacity: .4; }
+    .empty-text { font-size: .85rem; }
+
+    /* ── TASK CARD ── */
+    .task-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 14px; display: flex; align-items: flex-start; gap: 10px; animation: fadeIn .22s ease; transition: opacity .3s, transform .3s; position: relative; overflow: hidden; }
+    .task-card.repeat-card { border-color: rgba(255,201,77,.25); }
+    .task-card.repeat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background: linear-gradient(90deg, transparent, var(--accent3), transparent); opacity:.6; }
+    .task-card.removing { opacity: 0; transform: translateX(40px); }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+    .task-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; box-shadow: 0 0 8px currentColor; }
+    .status-pending   .task-dot { background: var(--pending);   color: var(--pending); }
+    .status-progress  .task-dot { background: var(--progress);  color: var(--progress); }
+    .status-completed .task-dot { background: var(--completed); color: var(--completed); }
+
+    .task-body { flex: 1; min-width: 0; }
+    .task-name { font-family: 'Syne', sans-serif; font-weight: 600; font-size: .93rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .status-completed .task-name { text-decoration: line-through; color: var(--muted); }
+
+    .task-meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+    .task-time { font-size: .7rem; color: var(--muted); }
+    .badge { font-size: .63rem; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; padding: 2px 7px; border-radius: 20px; }
+    .status-pending   .badge { background: rgba(255,201,77,.12);  color: var(--pending); }
+    .status-progress  .badge { background: rgba(79,255,176,.12);  color: var(--progress); }
+    .status-completed .badge { background: rgba(123,140,222,.12); color: var(--completed); }
+    .repeat-badge { background: rgba(255,201,77,.1); color: var(--accent3); font-size: .62rem; font-weight: 600; padding: 2px 7px; border-radius: 20px; letter-spacing: .4px; }
+
+    .task-actions { display: flex; gap: 5px; flex-shrink: 0; }
+    .ibtn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: .85rem; transition: all .15s; color: var(--muted); }
+    .ibtn:active { transform: scale(.88); }
+    .ibtn.start:hover { border-color: var(--progress);   color: var(--progress);   background: rgba(79,255,176,.08); }
+    .ibtn.done:hover  { border-color: var(--completed);  color: var(--completed);  background: rgba(123,140,222,.08); }
+    .ibtn.edit:hover  { border-color: var(--accent3);    color: var(--accent3);    background: rgba(255,201,77,.08); }
+    .ibtn.del:hover   { border-color: var(--accent2);    color: var(--accent2);    background: rgba(255,107,107,.08); }
+
+    /* ── OVERLAYS (shared bottom sheet) ── */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 50; display: none; align-items: flex-end; justify-content: center; }
+    .overlay.open { display: flex; animation: fadeOv .2s ease; }
+    @keyframes fadeOv { from{opacity:0} to{opacity:1} }
+    .sheet { width: 100%; max-width: 480px; background: var(--card); border: 1px solid var(--border); border-radius: 20px 20px 0 0; padding: 24px 20px 40px; animation: slideUp .25s ease; max-height: 92vh; overflow-y: auto; }
+    @keyframes slideUp { from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1} }
+    .sheet-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.1rem; margin-bottom: 18px; }
+    .sheet-fields { display: flex; flex-direction: column; gap: 12px; }
+    .sheet-actions { display: flex; gap: 8px; margin-top: 18px; }
+
+    /* how-to box in email setup */
+    .setup-sub { font-size: .8rem; color: var(--muted); margin-bottom: 16px; line-height: 1.6; }
+    .setup-sub a { color: var(--accent); text-decoration: none; }
+    .how-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; font-size: .78rem; color: var(--muted); line-height: 1.9; display: none; }
+    .how-box.open { display: block; }
+    .how-box strong { color: var(--text); }
+    .how-box code { color: var(--accent); font-family: monospace; background: rgba(79,255,176,.08); padding: 1px 4px; border-radius: 4px; }
+
+    /* section label */
+    .section-label { font-size: .68rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; margin-bottom: -2px; }
+
+    /* ── TOAST ── */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 10px 20px; border-radius: 20px; font-size: .82rem; box-shadow: var(--shadow); transition: transform .3s ease; pointer-events: none; white-space: nowrap; z-index: 200; }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ══ HEADER ══ -->
+  <header>
+    <div class="header-top">
+      <div class="brand">Day<span>Flow</span></div>
+      <div class="header-right">
+        <button id="installBtn" class="hbtn" title="Install App">⬇ Install App</button>
+        <div class="date-chip" id="dateChip"></div>
+        <button class="hbtn" id="settingsBtn" title="Email Notifications">🔔</button>
+      </div>
+    </div>
+    <div id="notifStatus" class="notif-status"></div>
+    <div class="summary">
+      <div class="stat s-pending"><div class="stat-num" id="cPending">0</div><div class="stat-label">Pending</div></div>
+      <div class="stat s-progress"><div class="stat-num" id="cProgress">0</div><div class="stat-label">Progress</div></div>
+      <div class="stat s-done"><div class="stat-num" id="cDone">0</div><div class="stat-label">Completed</div></div>
+    </div>
+  </header>
+
+  <!-- ══ ADD TASK ══ -->
+  <div class="add-section">
+    <button class="add-toggle" id="toggleForm">
+      <span class="plus">＋</span> Add New Task
+    </button>
+    <div class="form-panel" id="formPanel">
+      <div class="form-row">
+        <div class="field">
+          <label>Task Name</label>
+          <input id="taskName" type="text" placeholder="e.g. Morning standup" maxlength="60" />
+        </div>
+        <div class="field">
+          <label>Start Time</label>
+          <input id="taskTime" type="time" />
+        </div>
+
+        <!-- DAILY REPEAT TOGGLE -->
+        <div class="repeat-row" id="repeatRow">
+          <div class="repeat-label">
+            <span class="ri">🔁</span>
+            <div>
+              <div style="font-size:.88rem;color:var(--text)">Repeat Daily</div>
+              <div style="font-size:.7rem;color:var(--muted)">Resets to Pending every morning</div>
+            </div>
+          </div>
+          <div class="toggle-pill" id="repeatPill"></div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
+          <button class="btn btn-primary" id="addBtn">Add Task</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TABS ══ -->
+  <div class="tabs">
+    <button class="tab t-all active" data-tab="all">All</button>
+    <button class="tab t-pending"   data-tab="pending">⏳ Pending</button>
+    <button class="tab t-progress"  data-tab="progress">▶ Progress</button>
+    <button class="tab t-completed" data-tab="completed">✓ Done</button>
+    <button class="tab t-repeat"    data-tab="repeat">🔁 Daily</button>
+  </div>
+
+  <!-- ══ TASK LIST ══ -->
+  <div class="list-section" id="taskList"></div>
+</div>
+
+<!-- ══ EDIT TASK SHEET ══ -->
+<div class="overlay" id="editOverlay">
+  <div class="sheet">
+    <div class="sheet-title">✏️ Edit Task</div>
+    <div class="sheet-fields">
+      <div class="field">
+        <label>Task Name</label>
+        <input id="editName" type="text" placeholder="Task name" maxlength="60" />
+      </div>
+      <div class="field">
+        <label>Start Time</label>
+        <input id="editTime" type="time" />
+      </div>
+      <!-- repeat toggle in edit -->
+      <div class="repeat-row" id="editRepeatRow">
+        <div class="repeat-label">
+          <span class="ri">🔁</span>
+          <div>
+            <div style="font-size:.88rem;color:var(--text)">Repeat Daily</div>
+            <div style="font-size:.7rem;color:var(--muted)">Resets to Pending every morning</div>
+          </div>
+        </div>
+        <div class="toggle-pill" id="editRepeatPill"></div>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost"   id="editCancel">Cancel</button>
+      <button class="btn btn-primary" id="editSave">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ EMAIL SETUP SHEET ══ -->
+<div class="overlay" id="emailOverlay">
+  <div class="sheet">
+    <div class="sheet-title">🔔 Email Notifications</div>
+    <div class="setup-sub">
+      Uses <a href="https://www.emailjs.com" target="_blank">EmailJS</a> (free, no server, 200 emails/month).
+      <br><a href="#" id="howLink">📖 How to set up →</a>
+    </div>
+    <div class="how-box" id="howBox">
+      <strong>5-minute free setup:</strong><br>
+      1. Go to <a href="https://www.emailjs.com" target="_blank" style="color:var(--accent)">emailjs.com</a> → Sign up free<br>
+      2. <strong>Email Services</strong> → Add Service → Gmail → copy <strong>Service ID</strong><br>
+      3. <strong>Email Templates</strong> → Create Template<br>
+      &nbsp;&nbsp;Set <strong>To Email</strong> = <code>{{to_email}}</code><br>
+      &nbsp;&nbsp;Use in body: <code>{{task_name}}</code> <code>{{task_time}}</code> <code>{{event_type}}</code> <code>{{message}}</code><br>
+      &nbsp;&nbsp;→ Copy <strong>Template ID</strong><br>
+      4. <strong>Account → API Keys</strong> → copy <strong>Public Key</strong>
+    </div>
+    <div class="sheet-fields">
+      <div class="field">
+        <label>Your Email</label>
+        <input id="cfgEmail" type="email" placeholder="muhammadzubairahmad35@gmail.com" />
+      </div>
+      <div class="field">
+        <label>EmailJS Public Key</label>
+        <input id="cfgKey" type="text" placeholder="e.g. aBcDeFgHiJkLmN" />
+        <span class="field-hint">Account → API Keys → Public Key</span>
+      </div>
+      <div class="field">
+        <label>Service ID</label>
+        <input id="cfgService" type="text" placeholder="e.g. service_xxxxxxx" />
+      </div>
+      <div class="field">
+        <label>Template ID</label>
+        <input id="cfgTemplate" type="text" placeholder="e.g. template_xxxxxxx" />
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost"   id="emailCancel">Cancel</button>
+      <button class="btn btn-danger"  id="emailClear" style="flex:.6">Clear</button>
+      <button class="btn btn-primary" id="emailSave">Save &amp; Enable</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════
+//  SERVICE WORKER
+// ════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(console.error);
+  });
+}
+
+// ════════════════════════════════════════
+//  PWA INSTALL
+// ════════════════════════════════════════
+let deferredInstall = null;
+const installBtn = document.getElementById('installBtn');
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstall = e;
+  installBtn.classList.add('visible');
+});
+
+installBtn.addEventListener('click', async () => {
+  if (!deferredInstall) return;
+  deferredInstall.prompt();
+  const { outcome } = await deferredInstall.userChoice;
+  if (outcome === 'accepted') {
+    installBtn.classList.remove('visible');
+    showToast('✅ DayFlow installed!');
+  }
+  deferredInstall = null;
+});
+
+window.addEventListener('appinstalled', () => {
+  installBtn.classList.remove('visible');
+  deferredInstall = null;
+});
+
+// ════════════════════════════════════════
+//  EMAIL CONFIG
+// ════════════════════════════════════════
+const EMAIL_KEY = 'dayflow_email_cfg';
+let emailCfg = JSON.parse(localStorage.getItem(EMAIL_KEY) || 'null');
+
+const isEmailReady = () => !!(emailCfg?.key && emailCfg?.service && emailCfg?.template && emailCfg?.email);
+const initEJS = () => { if (isEmailReady()) emailjs.init({ publicKey: emailCfg.key }); };
+initEJS();
+
+async function sendEmail(taskName, taskTime, eventType, message) {
+  if (!isEmailReady()) return;
+  try {
+    await emailjs.send(emailCfg.service, emailCfg.template, {
+      to_email: emailCfg.email, task_name: taskName,
+      task_time: fmt12(taskTime), event_type: eventType, message
+    });
+    showToast('📧 Email sent!');
+  } catch(e) {
+    console.error(e);
+    showToast('⚠️ Email failed — check 🔔 settings');
+  }
+}
+
+// ════════════════════════════════════════
+//  STATE & HELPERS
+// ════════════════════════════════════════
+let tasks       = JSON.parse(localStorage.getItem('dayflow_tasks')    || '[]');
+let notified    = JSON.parse(localStorage.getItem('dayflow_notified') || '[]');
+let activeTab   = 'all';
+let editingId   = null;
+let addRepeat   = false;
+let editRepeat  = false;
+
+const save = () => localStorage.setItem('dayflow_tasks', JSON.stringify(tasks));
+const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+const esc  = s  => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmt12 = t => {
+  if (!t) return '–';
+  const [h,m] = t.split(':'); const hr = +h;
+  return `${hr%12||12}:${m} ${hr<12?'AM':'PM'}`;
+};
+
+// ════════════════════════════════════════
+//  DAILY REPEAT RESET
+// ════════════════════════════════════════
+(function dailyReset() {
+  const today = new Date().toDateString();
+  const last  = localStorage.getItem('dayflow_last_reset');
+  if (last !== today) {
+    let changed = false;
+    tasks = tasks.map(t => {
+      if (t.repeat && t.status !== 'pending') {
+        changed = true;
+        return { ...t, status: 'pending' };
+      }
+      return t;
+    });
+    // clear notifications for repeat tasks so they fire again today
+    const repeatIds = tasks.filter(t => t.repeat).map(t => t.id);
+    notified = notified.filter(id => !repeatIds.includes(id));
+    localStorage.setItem('dayflow_notified', JSON.stringify(notified));
+    localStorage.setItem('dayflow_last_reset', today);
+    if (changed) save();
+  }
+})();
+
+// ════════════════════════════════════════
+//  START-TIME WATCHER (every 30s)
+// ════════════════════════════════════════
+function checkStartTimes() {
+  const now = new Date();
+  const ts  = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  tasks.forEach(t => {
+    if (t.status === 'pending' && t.time === ts && !notified.includes(t.id)) {
+      notified.push(t.id);
+      localStorage.setItem('dayflow_notified', JSON.stringify(notified));
+      showToast(`⏰ Time to start: ${t.name}`);
+      sendEmail(t.name, t.time, '⏰ Task Reminder',
+        `It's time to start: "${t.name}" (scheduled ${fmt12(t.time)}).`);
+    }
+  });
+}
+setInterval(checkStartTimes, 30000);
+checkStartTimes();
+
+// ════════════════════════════════════════
+//  TOAST & DATE
+// ════════════════════════════════════════
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+document.getElementById('dateChip').textContent =
+  new Date().toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+
+// ════════════════════════════════════════
+//  NOTIF STATUS
+// ════════════════════════════════════════
+function renderNotifStatus() {
+  const el  = document.getElementById('notifStatus');
+  const btn = document.getElementById('settingsBtn');
+  el.innerHTML = isEmailReady()
+    ? `<div class="ndot on"></div><span style="color:var(--muted)">Emails → <span style="color:var(--text)">${emailCfg.email}</span></span>`
+    : `<div class="ndot off"></div><span style="color:var(--muted)">Tap 🔔 to enable email notifications</span>`;
+  btn.classList.toggle('on', isEmailReady());
+}
+renderNotifStatus();
+
+// ════════════════════════════════════════
+//  EMAIL OVERLAY
+// ════════════════════════════════════════
+const emailOverlay = document.getElementById('emailOverlay');
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  if (emailCfg) {
+    document.getElementById('cfgEmail').value    = emailCfg.email    || '';
+    document.getElementById('cfgKey').value      = emailCfg.key      || '';
+    document.getElementById('cfgService').value  = emailCfg.service  || '';
+    document.getElementById('cfgTemplate').value = emailCfg.template || '';
+  } else {
+    document.getElementById('cfgEmail').value = 'muhammadzubairahmad35@gmail.com';
+  }
+  emailOverlay.classList.add('open');
+});
+document.getElementById('emailCancel').addEventListener('click', () => emailOverlay.classList.remove('open'));
+emailOverlay.addEventListener('click', e => { if (e.target === emailOverlay) emailOverlay.classList.remove('open'); });
+
+document.getElementById('howLink').addEventListener('click', e => {
+  e.preventDefault(); document.getElementById('howBox').classList.toggle('open');
+});
+
+document.getElementById('emailClear').addEventListener('click', () => {
+  if (!confirm('Remove email notification settings?')) return;
+  emailCfg = null; localStorage.removeItem(EMAIL_KEY);
+  emailOverlay.classList.remove('open');
+  renderNotifStatus(); showToast('🔕 Notifications disabled');
+});
+
+document.getElementById('emailSave').addEventListener('click', () => {
+  const email    = document.getElementById('cfgEmail').value.trim();
+  const key      = document.getElementById('cfgKey').value.trim();
+  const service  = document.getElementById('cfgService').value.trim();
+  const template = document.getElementById('cfgTemplate').value.trim();
+  if (!email || !key || !service || !template) { showToast('⚠️ Fill in all four fields'); return; }
+  emailCfg = { email, key, service, template };
+  localStorage.setItem(EMAIL_KEY, JSON.stringify(emailCfg));
+  initEJS(); emailOverlay.classList.remove('open'); renderNotifStatus();
+  sendEmail('Setup Test', '00:00', '✅ Notifications Active',
+    'DayFlow email notifications are now active! You\'ll be notified when tasks are due, started, or completed.');
+});
+
+// ════════════════════════════════════════
+//  REPEAT TOGGLE (ADD FORM)
+// ════════════════════════════════════════
+const repeatRow  = document.getElementById('repeatRow');
+const repeatPill = document.getElementById('repeatPill');
+repeatRow.addEventListener('click', () => {
+  addRepeat = !addRepeat;
+  repeatPill.classList.toggle('on', addRepeat);
+  repeatRow.classList.toggle('active', addRepeat);
+});
+
+// ════════════════════════════════════════
+//  ADD TASK FORM
+// ════════════════════════════════════════
+const formPanel  = document.getElementById('formPanel');
+const taskNameEl = document.getElementById('taskName');
+const taskTimeEl = document.getElementById('taskTime');
+
+document.getElementById('toggleForm').addEventListener('click', () => {
+  formPanel.classList.toggle('open');
+  if (formPanel.classList.contains('open')) taskNameEl.focus();
+});
+document.getElementById('cancelBtn').addEventListener('click', () => {
+  formPanel.classList.remove('open');
+  taskNameEl.value = ''; taskTimeEl.value = '';
+  addRepeat = false; repeatPill.classList.remove('on'); repeatRow.classList.remove('active');
+});
+document.getElementById('addBtn').addEventListener('click', addTask);
+taskNameEl.addEventListener('keydown', e => e.key === 'Enter' && addTask());
+
+function addTask() {
+  const name = taskNameEl.value.trim();
+  const time = taskTimeEl.value;
+  if (!name) { taskNameEl.focus(); showToast('⚠️ Please enter a task name'); return; }
+  if (!time) { taskTimeEl.focus(); showToast('⚠️ Please set a start time'); return; }
+
+  tasks.unshift({ id: uid(), name, time, status: 'pending', repeat: addRepeat, createdAt: Date.now() });
+  save(); render();
+  taskNameEl.value = ''; taskTimeEl.value = '';
+  addRepeat = false; repeatPill.classList.remove('on'); repeatRow.classList.remove('active');
+  formPanel.classList.remove('open');
+  showToast(addRepeat ? '🔁 Daily task added!' : '✅ Task added!');
+}
+
+// ════════════════════════════════════════
+//  TABS
+// ════════════════════════════════════════
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    render();
+  });
+});
+
+// ════════════════════════════════════════
+//  EDIT TASK
+// ════════════════════════════════════════
+const editOverlay   = document.getElementById('editOverlay');
+const editRepeatRow = document.getElementById('editRepeatRow');
+const editRepeatPil = document.getElementById('editRepeatPill');
+
+editRepeatRow.addEventListener('click', () => {
+  editRepeat = !editRepeat;
+  editRepeatPil.classList.toggle('on', editRepeat);
+  editRepeatRow.classList.toggle('active', editRepeat);
+});
+
+function openEdit(id) {
+  const t = tasks.find(t => t.id === id); if (!t) return;
+  editingId = id;
+  document.getElementById('editName').value = t.name;
+  document.getElementById('editTime').value = t.time;
+  editRepeat = !!t.repeat;
+  editRepeatPil.classList.toggle('on', editRepeat);
+  editRepeatRow.classList.toggle('active', editRepeat);
+  editOverlay.classList.add('open');
+  setTimeout(() => document.getElementById('editName').focus(), 100);
+}
+
+document.getElementById('editCancel').addEventListener('click', () => {
+  editOverlay.classList.remove('open'); editingId = null;
+});
+editOverlay.addEventListener('click', e => { if (e.target === editOverlay) { editOverlay.classList.remove('open'); editingId = null; } });
+
+document.getElementById('editSave').addEventListener('click', () => {
+  const name = document.getElementById('editName').value.trim();
+  const time = document.getElementById('editTime').value;
+  if (!name) { document.getElementById('editName').focus(); showToast('⚠️ Enter a task name'); return; }
+  if (!time) { document.getElementById('editTime').focus(); showToast('⚠️ Set a start time'); return; }
+  tasks = tasks.map(t => t.id === editingId ? { ...t, name, time, repeat: editRepeat } : t);
+  save(); render();
+  editOverlay.classList.remove('open'); editingId = null;
+  showToast('✏️ Task updated!');
+});
+
+// ════════════════════════════════════════
+//  TASK ACTIONS
+// ════════════════════════════════════════
+function startTask(id) {
+  const t = tasks.find(t => t.id === id); if (!t) return;
+  t.status = 'progress'; save(); render();
+  showToast('▶ Task started!');
+  sendEmail(t.name, t.time, '▶ Task Started',
+    `You started: "${t.name}" (scheduled ${fmt12(t.time)}). Stay focused!`);
+}
+
+function doneTask(id) {
+  animateRemove(id, () => {
+    const t = tasks.find(t => t.id === id); if (!t) return;
+    t.status = 'completed'; save(); render();
+    showToast('🎉 Task completed!');
+    sendEmail(t.name, t.time, '🎉 Task Completed', `Great job! You completed: "${t.name}". Keep it up!`);
+  });
+}
+
+function deleteTask(id) {
+  animateRemove(id, () => {
+    tasks = tasks.filter(t => t.id !== id); save(); render();
+    showToast('🗑 Task deleted');
+  });
+}
+
+function animateRemove(id, cb) {
+  const card = document.querySelector(`[data-id="${id}"]`);
+  if (card) { card.classList.add('removing'); setTimeout(cb, 280); } else cb();
+}
+
+// ════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════
+function render() {
+  const list = document.getElementById('taskList');
+
+  document.getElementById('cPending').textContent  = tasks.filter(t=>t.status==='pending').length;
+  document.getElementById('cProgress').textContent = tasks.filter(t=>t.status==='progress').length;
+  document.getElementById('cDone').textContent     = tasks.filter(t=>t.status==='completed').length;
+
+  let filtered;
+  if (activeTab === 'all')       filtered = tasks;
+  else if (activeTab === 'repeat') filtered = tasks.filter(t => t.repeat);
+  else                             filtered = tasks.filter(t => t.status === activeTab);
+
+  if (!filtered.length) {
+    const msgs = { all:'No tasks yet — add one above!', pending:'No pending tasks', progress:'Nothing in progress', completed:'No completed tasks', repeat:'No daily tasks yet' };
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">${activeTab==='repeat'?'🔁':'📋'}</div><div class="empty-text">${msgs[activeTab]}</div></div>`;
+    return;
+  }
+
+  const order  = ['progress','pending','completed'];
+  const sorted = (activeTab==='all' || activeTab==='repeat')
+    ? [...filtered].sort((a,b) => order.indexOf(a.status) - order.indexOf(b.status))
+    : filtered;
+
+  let html='', lastStatus=null;
+  const secLabels = { progress:'▶ In Progress', pending:'⏳ Pending', completed:'✓ Completed' };
+
+  sorted.forEach(t => {
+    if ((activeTab==='all'||activeTab==='repeat') && t.status!==lastStatus) {
+      html += `<div class="section-label">${secLabels[t.status]}</div>`;
+      lastStatus = t.status;
+    }
+
+    const badgeText = t.status==='progress'?'In Progress':t.status==='pending'?'Pending':'Done';
+
+    const actionBtns = t.status==='pending'
+      ? `<button class="ibtn edit"  onclick="openEdit('${t.id}')"   title="Edit">✏️</button>
+         <button class="ibtn start" onclick="startTask('${t.id}')"  title="Start">▶</button>
+         <button class="ibtn del"   onclick="deleteTask('${t.id}')" title="Delete">✕</button>`
+      : t.status==='progress'
+      ? `<button class="ibtn edit"  onclick="openEdit('${t.id}')"   title="Edit">✏️</button>
+         <button class="ibtn done"  onclick="doneTask('${t.id}')"   title="Complete">✓</button>
+         <button class="ibtn del"   onclick="deleteTask('${t.id}')" title="Delete">✕</button>`
+      : `<button class="ibtn edit"  onclick="openEdit('${t.id}')"   title="Edit">✏️</button>
+         <button class="ibtn del"   onclick="deleteTask('${t.id}')" title="Delete">✕</button>`;
+
+    html += `
+      <div class="task-card status-${t.status}${t.repeat?' repeat-card':''}" data-id="${t.id}">
+        <div class="task-dot"></div>
+        <div class="task-body">
+          <div class="task-name">${esc(t.name)}</div>
+          <div class="task-meta">
+            <span class="task-time">🕐 ${fmt12(t.time)}</span>
+            <span class="badge">${badgeText}</span>
+            ${t.repeat ? '<span class="repeat-badge">🔁 Daily</span>' : ''}
+          </div>
+        </div>
+        <div class="task-actions">${actionBtns}</div>
+      </div>`;
+  });
+
+  list.innerHTML = html;
+}
+
+render();
+</script>
+</body>
+</html>
